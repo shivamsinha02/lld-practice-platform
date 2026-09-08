@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LLD Practice Platform</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1e2230; --border: #2a2f3f;
+    --text: #e6e8ee; --muted: #9aa1b2; --accent: #6c8dff; --good: #4caf7d;
+    --warn: #e0a840; --bad: #e0645f;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding: 16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+  header .learner { font-size: 13px; color: var(--muted); display:flex; align-items:center; gap:8px;}
+  header input { background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px; font-size:13px; width:130px;}
+  nav { display:flex; gap:4px; padding: 0 24px; border-bottom:1px solid var(--border); }
+  nav button { background:none; border:none; color:var(--muted); padding:12px 14px; cursor:pointer; font-size:13px; border-bottom:2px solid transparent;}
+  nav button.active { color:var(--text); border-color:var(--accent); }
+  main { max-width: 960px; margin: 0 auto; padding: 24px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; cursor:pointer; transition:.15s; }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { margin:0 0 6px; font-size:15px; }
+  .tag { display:inline-block; font-size:11px; background:var(--panel2); color:var(--muted); padding:2px 8px; border-radius:20px; margin-right:6px; margin-top:6px;}
+  .diff-EASY{color:var(--good)} .diff-MEDIUM{color:var(--warn)} .diff-HARD{color:var(--bad)}
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:16px;}
+  textarea { width:100%; min-height:340px; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:12px; font-family: ui-monospace, monospace; font-size:13px; line-height:1.5; resize:vertical;}
+  button.primary { background:var(--accent); color:white; border:none; padding:10px 18px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;}
+  button.secondary { background:var(--panel2); color:var(--text); border:1px solid var(--border); padding:9px 16px; border-radius:8px; cursor:pointer; font-size:13px;}
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .status-pill { font-size:12px; padding:3px 10px; border-radius:20px; font-weight:600; }
+  .st-SUBMITTED,.st-IN_PROGRESS{background:#2a3550;color:#8fb0ff}
+  .st-EVALUATING{background:#453a1e;color:var(--warn)}
+  .st-COMPLETED{background:#1e3a2c;color:var(--good)}
+  .st-FAILED{background:#3a1e1e;color:var(--bad)}
+  .criterion { border-bottom:1px solid var(--border); padding: 14px 0; }
+  .criterion:last-child { border-bottom:none; }
+  .crit-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  .crit-head b { font-size:13.5px; }
+  .score-bar { height:6px; background:var(--panel2); border-radius:4px; overflow:hidden; margin:6px 0 10px; }
+  .score-fill { height:100%; background:var(--accent); }
+  .meta-line { font-size:12.5px; color:var(--muted); margin:3px 0; }
+  .meta-line b { color:var(--text); font-weight:600;}
+  .overall { font-size:34px; font-weight:700; }
+  .hist-item { border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;}
+  .hist-item:hover{border-color:var(--accent);}
+  .muted { color:var(--muted); font-size:13px; }
+  .back { color:var(--muted); cursor:pointer; font-size:13px; margin-bottom:14px; display:inline-block;}
+  .template-hint { font-size:12px; color:var(--muted); margin-top:8px; white-space:pre-line; }
+  .spinner { display:inline-block; width:12px; height:12px; border:2px solid var(--muted); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:-1px;}
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧩 LLD Practice Platform</h1>
+  <div class="learner">
+    Learner ID <input id="learnerId" value="demo-learner" />
+  </div>
+</header>
+<nav>
+  <button data-tab="practice" class="active">Practice</button>
+  <button data-tab="history">History</button>
+</nav>
+<main id="app"></main>
+
+<script>
+const API = "/api";
+let state = { tab: "practice", view: "problems", problem: null, attempt: null, submissionId: null, pollTimer: null };
+
+function learnerId() { return document.getElementById("learnerId").value.trim() || "demo-learner"; }
+
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  state.tab = b.dataset.tab;
+  state.view = b.dataset.tab === "history" ? "history" : "problems";
+  render();
+}));
+
+async function api(path, opts) {
+  const res = await fetch(API + path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Request failed");
+  }
+  return res.json();
+}
+
+const TEMPLATE = `## Requirements & Assumptions
+-
+
+## Classes & Responsibilities
+- Class Foo: owns ...
+
+## Relationships / Interactions
+-
+
+## Patterns & Trade-offs
+-
+
+## Extensibility
+- If X changes, ...
+`;
+
+async function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "<p class='muted'>Loading…</p>";
+
+  if (state.view === "problems") {
+    const problems = await api("/problems");
+    app.innerHTML = `<div class="grid">${problems.map(p => `
+      <div class="card" onclick="openProblem('${p.id}')">
+        <h3>${p.title}</h3>
+        <span class="diff-${p.difficulty}">${p.difficulty}</span>
+        <div>${p.tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>
+      </div>`).join("")}</div>`;
+  }
+
+  else if (state.view === "problem") {
+    const p = state.problem;
+    app.innerHTML = `
+      <span class="back" onclick="goProblems()">← All problems</span>
+      <div class="panel">
+        <h2>${p.title} <span class="diff-${p.difficulty}" style="font-size:13px">${p.difficulty}</span></h2>
+        <p>${p.description}</p>
+        <b>Requirements</b>
+        <ul>${p.requirements.map(r => `<li>${r}</li>`).join("")}</ul>
+        <button class="primary" onclick="startAttempt('${p.id}')">Start Attempt</button>
+      </div>`;
+  }
+
+  else if (state.view === "workspace") {
+    app.innerHTML = `
+      <span class="back" onclick="goProblems()">← All problems</span>
+      <div class="panel">
+        <h2>${state.problem.title} — your design</h2>
+        <textarea id="content">${TEMPLATE}</textarea>
+        <div class="template-hint">Structured text is the submission format for this MVP — it's the smallest format that still gives evidence of your design reasoning (see DESIGN.md).</div>
+        <div class="row" style="margin-top:14px">
+          <button class="primary" id="submitBtn" onclick="submitDesign()">Submit for Feedback</button>
+        </div>
+      </div>`;
+  }
+
+  else if (state.view === "result") {
+    renderResult();
+  }
+
+  else if (state.view === "history") {
+    const items = await api(`/learners/${learnerId()}/history`);
+    if (items.length === 0) {
+      app.innerHTML = `<p class="muted">No attempts yet — head to Practice to start one.</p>`;
+      return;
+    }
+    app.innerHTML = items.map(item => `
+      <div class="hist-item" onclick="openHistoryItem('${item.attempt.id}', ${item.submission ? `'${item.submission.id}'` : null})">
+        <div>
+          <b>${problemTitleCache[item.attempt.problem_id] || item.attempt.problem_id}</b>
+          <div class="muted">${new Date(item.attempt.created_at).toLocaleString()}</div>
+        </div>
+        <div class="row">
+          ${item.evaluation ? `<span class="overall" style="font-size:20px">${(item.evaluation.overall_score*100).toFixed(0)}%</span>` : ""}
+          <span class="status-pill st-${item.submission ? item.submission.status : item.attempt.status}">${item.submission ? item.submission.status : item.attempt.status}</span>
+        </div>
+      </div>`).join("");
+  }
+}
+
+let problemTitleCache = {};
+async function primeProblemTitles() {
+  const problems = await api("/problems");
+  problems.forEach(p => problemTitleCache[p.id] = p.title);
+}
+primeProblemTitles();
+
+async function openProblem(id) {
+  state.problem = await api(`/problems/${id}`);
+  state.view = "problem";
+  render();
+}
+function goProblems() { state.view = "problems"; clearTimeout(state.pollTimer); render(); }
+
+async function startAttempt(problemId) {
+  state.attempt = await api("/attempts", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ problem_id: problemId, learner_id: learnerId() })
+  });
+  state.view = "workspace";
+  render();
+}
+
+async function submitDesign() {
+  const content = document.getElementById("content").value;
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "Submitting…";
+  try {
+    const idemKey = "ui-" + state.attempt.id; // one submission per attempt from this UI
+    const submission = await api(`/attempts/${state.attempt.id}/submissions`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ content, idempotency_key: idemKey })
+    });
+    state.submissionId = submission.id;
+    state.view = "result";
+    render();
+  } catch (e) {
+    alert("Couldn't submit: " + e.message);
+    btn.disabled = false; btn.textContent = "Submit for Feedback";
+  }
+}
+
+async function openHistoryItem(attemptId, submissionId) {
+  if (!submissionId) { alert("This attempt has no submission yet."); return; }
+  state.submissionId = submissionId;
+  state.view = "result";
+  render();
+}
+
+async function renderResult() {
+  const app = document.getElementById("app");
+  const data = await api(`/submissions/${state.submissionId}`);
+  const s = data.submission, ev = data.evaluation;
+
+  let body = "";
+  if (s.status === "FAILED") {
+    body = `<div class="panel">
+      <div class="row"><span class="status-pill st-FAILED">FAILED</span></div>
+      <p style="margin-top:14px"><b>Why it failed:</b> ${s.failure_reason || "Unknown error"}</p>
+      <p class="muted">If this looks like a structural issue (missing section, too short), revise and resubmit as a new attempt. If it looks like a transient evaluator error, you can retry.</p>
+      <button class="secondary" onclick="retrySubmission()">Retry evaluation</button>
+    </div>`;
+  } else if (s.status === "EVALUATING" || s.status === "SUBMITTED") {
+    body = `<div class="panel">
+      <div class="row"><span class="spinner"></span> <span class="status-pill st-${s.status}">${s.status}</span></div>
+      <p class="muted" style="margin-top:10px">Evaluating your design against the rubric…</p>
+    </div>`;
+    clearTimeout(state.pollTimer);
+    state.pollTimer = setTimeout(render, 1200);
+  } else if (ev) {
+    body = `<div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><span class="overall">${(ev.overall_score*100).toFixed(0)}%</span> <span class="muted">overall</span></div>
+        <span class="status-pill st-COMPLETED">COMPLETED</span>
+      </div>
+      <p style="margin-top:10px">${ev.summary}</p>
+      <div class="muted" style="font-size:11.5px">evaluator: ${ev.evaluator_name}</div>
+    </div>
+    <div class="panel">
+      ${ev.results.map(r => `
+        <div class="criterion">
+          <div class="crit-head"><b>${r.criterion_name}</b><span>${(r.score*100).toFixed(0)}%</span></div>
+          <div class="score-bar"><div class="score-fill" style="width:${r.score*100}%"></div></div>
+          <div class="meta-line"><b>Evidence:</b> ${r.evidence}</div>
+          ${r.concern ? `<div class="meta-line"><b>Concern:</b> ${r.concern}</div>` : ""}
+          <div class="meta-line"><b>Try next:</b> ${r.suggestion}</div>
+          <div class="meta-line" style="opacity:.7">confidence: ${(r.confidence*100).toFixed(0)}%</div>
+        </div>`).join("")}
+    </div>`;
+  }
+
+  app.innerHTML = `<span class="back" onclick="goProblems()">← All problems</span>` + body;
+}
+
+async function retrySubmission() {
+  await api(`/submissions/${state.submissionId}/retry`, { method: "POST" });
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
