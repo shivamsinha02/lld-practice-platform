@@ -32,7 +32,7 @@ AI_USAGE.md
 ```
 
 ## How to run it
-
+Live Link : https://lld-practice-platform.onrender.com/
 ```bash
 cd lld-practice-platform
 python3 -m venv .venv && source .venv/bin/activate   # optional but recommended
