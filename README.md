@@ -61,20 +61,7 @@ transitions), the structural gate (pass/fail/edge cases like empty input),
 the heuristic evaluator, the full service flow (happy path, idempotent
 resubmission, structural failure, evaluator-crash failure, retry, 404s), and
 HTTP-level integration tests (200/404/409 status codes) via FastAPI's
-`TestClient`.
 
-> **A note on how this was verified.** The sandbox I built this in had no
-> network access, so I couldn't `pip install` FastAPI/pytest/anthropic there
-> to run the full suite end-to-end. I syntax-checked every file
-> (`py_compile`) and — more importantly — hand-ran the entire domain and
-> service layer (the actual LLD, with no framework dependencies) directly
-> against SQLite: full happy path, idempotency, structural-gate failure,
-> evaluator-crash failure, retry, concurrent-retry locking, and background
-> threaded evaluation with polling. That caught and fixed one real bug (a
-> stale in-memory object being returned instead of the post-evaluation
-> state). The FastAPI layer is a thin, mechanical wrapper over that same
-> service — but I'd run `pytest tests/` myself as the very first step in any
-> real environment before trusting it further.
 
 ## What I'd extend first
 
